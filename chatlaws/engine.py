@@ -1,4 +1,4 @@
-"""World simulation. Baseline: laws are accepted but collisions change nothing."""
+"""World simulation with directional collision laws that recolor the subject."""
 
 
 class World:
@@ -10,4 +10,6 @@ class World:
         return self._colors[name]
 
     def collide(self, a, b):
-        return None
+        for subject, obj, color in self._laws:
+            if (subject, obj) == (a, b):
+                self._colors[subject] = color
