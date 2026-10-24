@@ -34,3 +34,6 @@ class LawBook:
                 raise Conflict()
         self.laws.append(law)
         return len(self.laws)
+
+    def pop_last(self) -> None:
+        self.laws.pop()

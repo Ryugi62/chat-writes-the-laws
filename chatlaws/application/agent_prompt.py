@@ -8,8 +8,8 @@ def build_prompt(test_name: str) -> str:
     if not _NAME.match(test_name):
         raise ValueError("not a compiled law test")
     return (
-        "The new compiled test tests/laws/%s fails. Edit ONLY chatlaws/engine.py so that every test under "
-        "tests/ passes (python3 -m unittest discover -s tests -t .). Do not edit anything under tests/. "
-        "Implement the World laws generically (any law tuple of subject, object, color), not as a special "
-        "case for this one test. Keep it stdlib-only." % test_name
+        "The new compiled test tests/laws/%s fails because the law table lacks its entry. "
+        "Edit ONLY chatlaws/lawtable.py: add the one (subject, object, color) tuple that test expects to "
+        "LAW_TABLE, in the same style as the existing entries, with a '# Law NNN' comment. "
+        "Do not edit anything else, do not run the test suite (the caller runs it). Stdlib only." % test_name
     )

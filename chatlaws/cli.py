@@ -1,25 +1,19 @@
-"""Local core loop: sentence -> compile -> red -> codex fixes engine -> green -> rulebook."""
+"""CLI: apply one sentence, or run the live loop (IRC -> grammar -> queue -> test -> patch -> screen)."""
 import argparse
 import json
 import os
-import subprocess
 import sys
+import threading
 import time
 
-from .application.ingest import Ingest
-from .application.agent_prompt import build_prompt
-from .domain.grammar import parse_sentence, GrammarError
+from .application.pipeline import Pipeline
+from .application.watch import Watcher
 from .domain.law import LawBook, Law
-from .infrastructure.codex_runner import run_codex
-from .infrastructure.rulebook import append_rule
+from .infrastructure.ports import LocalPorts
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE = os.path.join(ROOT, "laws.json")
-
-
-def _tests(*extra):
-    p = subprocess.run([sys.executable, "-m", "unittest"] + list(extra), cwd=ROOT, capture_output=True, text=True)
-    return p.returncode, (p.stdout + p.stderr)
+STATE_JSON = os.path.join(ROOT, "state.json")
 
 
 def _load_book():
@@ -30,59 +24,69 @@ def _load_book():
     return b
 
 
-def apply(author, text):
-    t0 = time.time()
-    book = _load_book()
-    out = Ingest(book).submit(author, text)
-    if out.status != "accepted":
-        print("REJECTED reason=%s (text not shown, not stored, not sent to the agent)" % out.reason)
-        return 2
-    print("COMPILED law %03d -> tests/laws/%s" % (out.number, out.test_name))
-    path = os.path.join(ROOT, "tests", "laws", out.test_name)
-    open(path, "w").write(out.test_source)
-    rc, log = _tests("tests.laws." + out.test_name[:-3])
-    print("RED run (expected failure), exit=%d\n%s" % (rc, "\n".join(log.strip().splitlines()[-6:])))
-    session = None
-    if rc == 0:
-        print("test already green: engine needs no fix")
-    else:
-        rc2, session, _ = run_codex(ROOT, build_prompt(out.test_name))
-        print("CODEX exit=%d session_id=%s" % (rc2, session))
-        rc, log = _tests("discover", "-s", "tests", "-t", ".")
-        print("GREEN run exit=%d\n%s" % (rc, "\n".join(log.strip().splitlines()[-4:])))
-        if rc != 0:
-            os.remove(path)
-            return 3
-    json.dump([l.__dict__ for l in book.laws], open(STATE, "w"), indent=1)
-    append_rule(os.path.join(ROOT, "RULEBOOK.md"), out.number, out.law.sentence, out.law.author)
-    print("RULEBOOK +1: Law %03d by @%s  (%.0fs total)" % (out.number, out.law.author, time.time() - t0))
-    if session:
-        open(os.path.join(ROOT, "SESSIONS.log"), "a").write("law %03d %s\n" % (out.number, session))
-    return 0
+def _pipeline(patcher_effort):
+    return Pipeline(_load_book(), STATE_JSON, LocalPorts(ROOT, codex_effort=patcher_effort))
 
 
-def watch(channel, seconds):
+def _report(r):
+    t = " ".join("%s=%.1fs" % (k, v) for k, v in r.timings.items())
+    print("RESULT %s%s session=%s | %s" % (r.status, " reason=" + r.reason if r.reason else "", r.session, t))
+
+
+def apply(author, text, effort):
+    r = _pipeline(effort).process(author, text)
+    _report(r)
+    return 0 if r.status == "accepted" else 2
+
+
+def live(channel, seconds, port, effort, inject):
     from .infrastructure.twitch_irc import read_chat
-    for user, _ch, text in read_chat(channel, seconds):
+    from .infrastructure.webserver import make_server
+    pipe = _pipeline(effort)
+    w = Watcher(on_drop=pipe.note_dropped, log=lambda m: print(m, flush=True))
+    srv = make_server(ROOT, STATE_JSON, port)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    print("screen: http://127.0.0.1:%d/  (OBS browser source)" % srv.server_address[1], flush=True)
+    end = time.time() + seconds
+
+    def reader():
+        if not channel:
+            return
         try:
-            parse_sentence(text)
-            print("IN-GRAMMAR from @%s" % user)
-        except GrammarError:
-            print("dropped (outside grammar) from @%s" % user)
+            for user, _ch, text in read_chat(channel, seconds):
+                w.feed(user, text)
+        except OSError as e:
+            print("irc stopped: %s" % type(e).__name__, flush=True)
+
+    threading.Thread(target=reader, daemon=True).start()
+    for s in inject:  # developer input, labelled local_dev, never a viewer
+        w.feed("local_dev", s)
+    while time.time() < end or w.pending():
+        item = w.take()
+        if item:
+            _report(pipe.process(*item))
+        else:
+            time.sleep(0.05)
+    srv.shutdown()
     return 0
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="chatlaws")
+    ap.add_argument("--effort", default="low", help="codex reasoning effort for the patch")
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("apply")
     a.add_argument("--author", required=True)
     a.add_argument("--text", required=True)
-    w = sub.add_parser("watch")
-    w.add_argument("channel")
-    w.add_argument("--seconds", type=float, default=30)
+    w = sub.add_parser("live")
+    w.add_argument("channel", nargs="?", default="")
+    w.add_argument("--seconds", type=float, default=60)
+    w.add_argument("--port", type=int, default=8765)
+    w.add_argument("--inject", action="append", default=[], help="dev sentence, author local_dev")
     args = ap.parse_args(argv)
-    return apply(args.author, args.text) if args.cmd == "apply" else watch(args.channel, args.seconds)
+    if args.cmd == "apply":
+        return apply(args.author, args.text, args.effort)
+    return live(args.channel, args.seconds, args.port, args.effort, args.inject)
 
 
 if __name__ == "__main__":

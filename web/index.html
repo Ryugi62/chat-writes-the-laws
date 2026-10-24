@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chat Writes the Laws</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { --bg:#0e1116; --panel:#161b22; --line:#2a313c; --ink:#e8edf2; --dim:#8b95a3; --accent:#9146ff; --bad:#ff5d5d; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); overflow:hidden;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #stage { position:absolute; left:0; top:0; width:1280px; height:720px; transform-origin:0 0; }
+  canvas { position:absolute; left:0; top:0; background:#0b0e13; }
+  #side { position:absolute; left:880px; top:0; width:400px; height:720px; background:var(--panel);
+    border-left:1px solid var(--line); padding:24px 24px 16px; display:flex; flex-direction:column; }
+  h1 { font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); margin:0 0 4px; font-weight:600; }
+  #how { font-size:15px; line-height:1.4; color:var(--ink); margin:0 0 16px; }
+  #how b { color:#c9b2ff; font-weight:600; }
+  #book { list-style:none; margin:0; padding:0; flex:1; overflow:hidden; }
+  #book li { padding:8px 0; border-top:1px solid var(--line); }
+  #book li:first-child { border-top:0; }
+  #book .n { font-size:12px; color:var(--dim); letter-spacing:.06em; }
+  #book .s { font-size:17px; line-height:1.3; margin:4px 0; }
+  #book .a { font-size:14px; color:#c9b2ff; }
+  #book .sw { display:inline-block; width:12px; height:12px; border-radius:4px; margin-right:8px; vertical-align:-2px; }
+  #book li.new { animation: flash 2.4s ease-out; }
+  @keyframes flash { 0% { background:rgba(145,70,255,.35); } 100% { background:transparent; } }
+  #empty { color:var(--dim); font-size:15px; }
+  #foot { font-size:13px; color:var(--dim); padding-top:8px; border-top:1px solid var(--line); }
+  #toast { position:absolute; left:24px; top:24px; max-width:832px; padding:16px 16px; border-radius:12px;
+    background:rgba(22,27,34,.94); border:1px solid var(--line); font-size:19px; line-height:1.35;
+    opacity:0; transform:translateY(-8px); transition:opacity .25s, transform .25s; }
+  #toast.show { opacity:1; transform:none; }
+  #toast.conflict { border-color:var(--bad); }
+  #toast.conflict .k { color:var(--bad); }
+  #toast .k { font-weight:700; letter-spacing:.08em; font-size:13px; text-transform:uppercase; display:block; margin-bottom:4px; color:#c9b2ff; }
+  #dbg { display:none; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="c" width="880" height="720"></canvas>
+  <div id="toast"></div>
+  <aside id="side">
+    <h1>Rulebook</h1>
+    <p id="how">Type one sentence in chat:<br><b>when ball hits wall it turns red</b></p>
+    <ol id="book"></ol>
+    <div id="empty">No laws yet. The world is plain.</div>
+    <div id="foot"></div>
+  </aside>
+</div>
+<pre id="dbg"></pre>
+<script>
+"use strict";
+var W = 880, H = 720, WALL = 30, FLOOR = 70, G = 1500, DT = 1 / 60;
+var BASE = { ball: "#f2f4f8", wall: "#5b6573", floor: "#3a424d", crate: "#c99a5b" };
+var colors = {}, laws = [], hits = [], applied = [], seen = 0, frame = 0, rng = 12345;
+Object.keys(BASE).forEach(function (k) { colors[k] = BASE[k]; });
+var HEX = { red:"#ff4d4d", green:"#3ddc84", blue:"#4da3ff", yellow:"#ffd84d", purple:"#b072ff", orange:"#ff9a3d", white:"#ffffff" };
+
+function rand() { rng = (rng * 1664525 + 1013904223) >>> 0; return rng / 4294967296; }
+
+var ball = { x: 300, y: 200, vx: 260, vy: 0, r: 26 };
+var crate = { x: 600, y: H - FLOOR - 28, vx: 0, vy: 0, h: 28 };
+
+function lawFor(a, b) {
+  for (var i = 0; i < laws.length; i++) if (laws[i].subject === a && laws[i].obj === b) return laws[i];
+  return null;
+}
+function hit(a, b) {
+  hits.push(a + ">" + b);
+  var l = lawFor(a, b);
+  if (l) { colors[a] = HEX[l.color] || l.color; applied.push({ f: frame, law: l.n, thing: a, color: l.color }); }
+}
+
+function step() {
+  frame++;
+  // gentle kicks keep every pair meeting: ball and crate get pushed on a fixed cycle
+  if (frame % 150 === 0) { ball.vx += (rand() < .5 ? -1 : 1) * (240 + rand() * 200); ball.vy -= 420 + rand() * 260; }
+  if (frame % 230 === 0) { crate.vx += (rand() < .5 ? -1 : 1) * (320 + rand() * 160); crate.vy -= 380; }
+  ball.vy += G * DT; ball.x += ball.vx * DT; ball.y += ball.vy * DT;
+  crate.vy += G * DT; crate.x += crate.vx * DT; crate.y += crate.vy * DT;
+  var L = WALL, R = W - WALL, T = H - FLOOR, v;
+  // ball vs walls and floor
+  if (ball.x - ball.r < L) { ball.x = L + ball.r; v = -ball.vx; if (v > 50) hit("ball", "wall"); ball.vx = v * .92; }
+  if (ball.x + ball.r > R) { ball.x = R - ball.r; v = ball.vx; if (v > 50) hit("ball", "wall"); ball.vx = -v * .92; }
+  if (ball.y + ball.r > T) { ball.y = T - ball.r; v = ball.vy; if (v > 90) hit("ball", "floor"); ball.vy = -v * .82; ball.vx *= .995; }
+  // crate vs walls and floor
+  if (crate.x - crate.h < L) { crate.x = L + crate.h; v = -crate.vx; if (v > 50) hit("crate", "wall"); crate.vx = v * .3; }
+  if (crate.x + crate.h > R) { crate.x = R - crate.h; v = crate.vx; if (v > 50) hit("crate", "wall"); crate.vx = -v * .3; }
+  if (crate.y + crate.h > T) { crate.y = T - crate.h; v = crate.vy; if (v > 120) hit("crate", "floor"); crate.vy = v > 120 ? -v * .25 : 0; crate.vx *= .97; }
+  // ball vs crate (circle vs box)
+  var cx = Math.max(crate.x - crate.h, Math.min(ball.x, crate.x + crate.h));
+  var cy = Math.max(crate.y - crate.h, Math.min(ball.y, crate.y + crate.h));
+  var dx = ball.x - cx, dy = ball.y - cy, d = Math.sqrt(dx * dx + dy * dy);
+  if (d < ball.r && d > 0.001) {
+    var nx = dx / d, ny = dy / d, rv = (ball.vx - crate.vx) * nx + (ball.vy - crate.vy) * ny;
+    if (rv < 0) {
+      var bs = Math.hypot(ball.vx, ball.vy), cs = Math.hypot(crate.vx, crate.vy);
+      if (-rv > 60) { if (bs >= cs) hit("ball", "crate"); else hit("crate", "ball"); }
+      var j = -(1.5) * rv / (1 + 1 / 3);
+      ball.vx += j * nx; ball.vy += j * ny; crate.vx -= j * nx / 3; crate.vy -= j * ny / 3;
+    }
+    var push = ball.r - d; ball.x += nx * push; ball.y += ny * push;
+  }
+}
+
+var cv = document.getElementById("c"), cx2 = cv.getContext("2d");
+function draw() {
+  cx2.clearRect(0, 0, W, H);
+  cx2.fillStyle = colors.wall; cx2.fillRect(0, 0, WALL, H); cx2.fillRect(W - WALL, 0, WALL, H);
+  cx2.fillStyle = colors.floor; cx2.fillRect(WALL, H - FLOOR, W - 2 * WALL, FLOOR);
+  cx2.fillStyle = colors.crate; cx2.fillRect(crate.x - crate.h, crate.y - crate.h, crate.h * 2, crate.h * 2);
+  cx2.strokeStyle = "rgba(0,0,0,.35)"; cx2.lineWidth = 3; cx2.strokeRect(crate.x - crate.h + 8, crate.y - crate.h + 8, crate.h * 2 - 16, crate.h * 2 - 16);
+  cx2.fillStyle = colors.ball; cx2.beginPath(); cx2.arc(ball.x, ball.y, ball.r, 0, 6.2832); cx2.fill();
+  cx2.font = "600 13px -apple-system, Helvetica, Arial, sans-serif"; cx2.fillStyle = "#8b95a3";
+  cx2.fillText("wall", 6, H - 8); cx2.fillText("floor", W / 2 - 14, H - 24);
+}
+
+// ---- rulebook overlay + toasts -------------------------------------------------------------
+var bookEl = document.getElementById("book"), emptyEl = document.getElementById("empty"),
+    footEl = document.getElementById("foot"), toastEl = document.getElementById("toast"), toastT = 0, evSeen = -1;
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+function pad(n) { return ("00" + n).slice(-3); }
+function toast(kind, text) {
+  toastEl.className = "show " + (kind === "accepted" ? "" : "conflict");
+  toastEl.innerHTML = '<span class="k">' + (kind === "accepted" ? "New law" : kind === "duplicate" ? "Already a law" : "Conflict - rejected") + "</span>" + esc(text);
+  clearTimeout(toastT); toastT = setTimeout(function () { toastEl.className = ""; }, 4200);
+}
+function render(s) {
+  var fresh = s.laws.length > seen;
+  laws = s.laws;
+  var html = "";
+  for (var i = s.laws.length - 1; i >= 0; i--) {
+    var l = s.laws[i], isNew = fresh && i >= seen;
+    html += '<li' + (isNew ? ' class="new"' : "") + '><div class="n">LAW ' + pad(l.n) + '</div><div class="s"><span class="sw" style="background:' +
+      (HEX[l.color] || l.color) + '"></span>' + esc(l.sentence) + '</div><div class="a">@' + esc(l.author) + "</div></li>";
+  }
+  bookEl.innerHTML = html;
+  emptyEl.style.display = s.laws.length ? "none" : "block";
+  seen = s.laws.length;
+  footEl.textContent = s.dropped + " chat lines outside the grammar were dropped";
+  var ev = s.events || [], last = ev.length ? ev[ev.length - 1] : null;
+  var key = ev.length + ":" + (last ? last.kind + last.sentence : "");
+  if (last && key !== evSeen) { if (evSeen !== -1) toast(last.kind, last.sentence + (last.kind === "accepted" ? "  - @" + last.author : "")); evSeen = key; }
+  else if (evSeen === -1) evSeen = key;
+  dbg();
+}
+function dbg() {
+  var d = {}; Object.keys(colors).forEach(function (k) { d[k] = colors[k]; });
+  document.getElementById("dbg").textContent = JSON.stringify({ colors: d, laws: laws.length, hits: hits.length, applied: applied.length, laws_fired: Object.keys(applied.reduce(function (m, e) { m[e.law] = 1; return m; }, {})).length, first_fired: applied.slice(0, 6), frame: frame, toast: toastEl.className });
+  window.__chatlaws = { colors: d, laws: laws.length, hits: hits.slice(), frame: frame };
+}
+function poll() {
+  fetch("state.json", { cache: "no-store" }).then(function (r) { return r.json(); }).then(render).catch(function () {});
+}
+
+// ---- boot ----------------------------------------------------------------------------------
+var q = new URLSearchParams(location.search), ff = parseInt(q.get("ff") || "0", 10), once = q.get("once") === "1";
+fetch("state.json", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) {
+  evSeen = -1; render(s);
+  for (var i = 0; i < ff; i++) step();
+  // fast-forward replays hit events for the laws that are already in the book
+  if (q.get("toast")) { var e = s.events[s.events.length - 1]; if (e) toast(e.kind, e.sentence + (e.kind === "accepted" ? "  - @" + e.author : "")); }
+  draw(); dbg();
+  if (once) return;
+  setInterval(poll, 400);
+  var last = 0;
+  (function loop(t) { if (t - last > 15) { step(); last = t; } draw(); requestAnimationFrame(loop); })(0);
+  setInterval(dbg, 500);
+}).catch(function () { draw(); });
+function fit() { var sc = Math.min(innerWidth / 1280, innerHeight / 720); document.getElementById("stage").style.transform = "scale(" + sc + ")"; }
+addEventListener("resize", fit); fit();
+</script>
+</body>
+</html>

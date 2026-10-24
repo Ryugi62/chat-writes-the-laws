@@ -1,4 +1,7 @@
-"""World simulation with directional collision laws that recolor the subject."""
+"""World simulation with directional collision laws that recolor the subject.
+
+Laws come from `chatlaws.lawtable.LAW_TABLE` (the only file the agent patches).
+"""
 
 
 class World:

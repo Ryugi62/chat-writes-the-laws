@@ -14,10 +14,13 @@ def extract_thread_id(jsonl: str) -> Optional[str]:
     return None
 
 
-def run_codex(repo: str, prompt: str, timeout: int = 280) -> Tuple[int, Optional[str], str]:
+def run_codex(repo: str, prompt: str, timeout: int = 280, effort: str = "") -> Tuple[int, Optional[str], str]:
     """codex exec in the repo (workspace-write sandbox). Returns (exit, session id, raw jsonl)."""
+    cmd = ["codex", "exec", "--json", "--sandbox", "workspace-write", "-C", repo]
+    if effort:
+        cmd += ["-c", 'model_reasoning_effort="%s"' % effort]
     p = subprocess.run(
-        ["codex", "exec", "--json", "--sandbox", "workspace-write", "-C", repo, prompt],
+        cmd + [prompt],
         capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL,
     )
     return p.returncode, extract_thread_id(p.stdout), p.stdout

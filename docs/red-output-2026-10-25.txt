@@ -1,0 +1,25 @@
+  File "/Users/ryugi62/dev/chat-writes-the-laws/tests/test_watch_queue.py", line 2, in <module>
+    from chatlaws.application.watch import Watcher
+ModuleNotFoundError: No module named 'chatlaws.application.watch'
+
+
+======================================================================
+ERROR: test_page_is_self_contained (tests.test_web.WebTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/ryugi62/dev/chat-writes-the-laws/tests/test_web.py", line 15, in test_page_is_self_contained
+    src = open(HTML, encoding="utf8").read()
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/ryugi62/dev/chat-writes-the-laws/web/index.html'
+
+======================================================================
+ERROR: test_server_serves_page_and_state_on_loopback (tests.test_web.WebTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/ryugi62/dev/chat-writes-the-laws/tests/test_web.py", line 22, in test_server_serves_page_and_state_on_loopback
+    from chatlaws.infrastructure.webserver import make_server
+ModuleNotFoundError: No module named 'chatlaws.infrastructure.webserver'
+
+----------------------------------------------------------------------
+Ran 31 tests in 0.005s
+
+FAILED (errors=6)

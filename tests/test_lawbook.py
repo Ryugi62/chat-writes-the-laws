@@ -35,3 +35,11 @@ class TestGenTest(unittest.TestCase):
 
     def test_render_contains_no_author(self):
         self.assertNotIn("alice_01", render_test(L(), 1))
+
+
+class PopTest(unittest.TestCase):
+    def test_pop_last_rolls_back(self):
+        b = LawBook(); b.add(L("red"))
+        b.pop_last()
+        self.assertEqual(b.laws, [])
+        self.assertEqual(b.add(L("blue")), 1)

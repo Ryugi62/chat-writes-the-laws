@@ -3,17 +3,9 @@ import re
 import socket
 import ssl
 import time
-from typing import Iterator, Optional, Tuple
+from typing import Iterator, Tuple
 
-_PRIV = re.compile(r"^(?:@\S+ )?:([A-Za-z0-9_]+)![^ ]+ PRIVMSG #([A-Za-z0-9_]+) :(.*)$")
-
-
-def parse_line(line: str) -> Optional[Tuple[str, str, str]]:
-    m = _PRIV.match(line)
-    if not m:
-        return None
-    return m.group(1).lower(), m.group(2).lower(), m.group(3)
-
+from ..domain.irc import parse_line
 
 def read_chat(channel: str, seconds: float = 30.0) -> Iterator[Tuple[str, str, str]]:
     ctx = ssl.create_default_context()

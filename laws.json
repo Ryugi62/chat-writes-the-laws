@@ -4,5 +4,29 @@
   "obj": "wall",
   "color": "red",
   "author": "local_dev"
+ },
+ {
+  "subject": "ball",
+  "obj": "floor",
+  "color": "blue",
+  "author": "local_dev"
+ },
+ {
+  "subject": "crate",
+  "obj": "wall",
+  "color": "green",
+  "author": "local_dev"
+ },
+ {
+  "subject": "crate",
+  "obj": "floor",
+  "color": "orange",
+  "author": "local_dev"
+ },
+ {
+  "subject": "ball",
+  "obj": "crate",
+  "color": "yellow",
+  "author": "local_dev"
  }
 ]
